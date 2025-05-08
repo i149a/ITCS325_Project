@@ -20,15 +20,21 @@ public class SRTF {
 
         System.out.println("Enter process details (PID ArrivalTime BurstTime Priority). Enter '0 0 0 0' to stop:");
 
+        // Input processes
         while (true) {
             int pid = sc.nextInt();
             int at = sc.nextInt();
             int bt = sc.nextInt();
             int pr = sc.nextInt();
             if (pid == 0 && at == 0 && bt == 0 && pr == 0) break;
-            processes.add(new Process(pid, at, bt, pr));
+            if (bt > 0) {  // Ignore processes with 0 or negative burst time
+                processes.add(new Process(pid, at, bt, pr));
+            } else {
+                System.out.println("Burst time must be greater than 0. Skipping process " + pid);
+            }
         }
 
+        // Sort processes by arrival time
         processes.sort(Comparator.comparingInt(p -> p.arrivalTime));
 
         int time = 0;
@@ -39,10 +45,11 @@ public class SRTF {
         while (completed < n) {
             Process current = null;
 
+            // Select process with the shortest remaining time
             for (Process p : processes) {
                 if (p.arrivalTime <= time && p.remainingTime > 0) {
-                    if (current == null || p.priority < current.priority ||
-                        (p.priority == current.priority && p.remainingTime < current.remainingTime)) {
+                    if (current == null || p.remainingTime < current.remainingTime ||
+                        (p.remainingTime == current.remainingTime && p.priority < current.priority)) {
                         current = p;
                     }
                 }
@@ -71,42 +78,41 @@ public class SRTF {
             }
         }
 
-        // Display Gantt Chart
-  // Display Gantt Chart with timestamps
-System.out.println("\nGantt Chart:");
-System.out.print("|");
+        // Display Gantt Chart with timestamps
+        System.out.println("\nGantt Chart:");
+        System.out.print("|");
 
-int currentPid = ganttChart.get(0);
-int startTime = 0;
+        int currentPid = ganttChart.get(0);
+        int startTime = 0;
 
-List<Integer> changePoints = new ArrayList<>();
-List<String> ganttLabels = new ArrayList<>();
+        List<Integer> changePoints = new ArrayList<>();
+        List<String> ganttLabels = new ArrayList<>();
 
-for (int i = 1; i < ganttChart.size(); i++) {
-    if (!Objects.equals(ganttChart.get(i), currentPid)) {
-        changePoints.add(i);
+        for (int i = 1; i < ganttChart.size(); i++) {
+            if (!Objects.equals(ganttChart.get(i), currentPid)) {
+                changePoints.add(i);
+                ganttLabels.add(currentPid == -1 ? "IDLE" : "P" + currentPid);
+                currentPid = ganttChart.get(i);
+            }
+        }
+
+        // Add final segment
+        changePoints.add(ganttChart.size());
         ganttLabels.add(currentPid == -1 ? "IDLE" : "P" + currentPid);
-        currentPid = ganttChart.get(i);
-    }
-}
-// add final segment
-changePoints.add(ganttChart.size());
-ganttLabels.add(currentPid == -1 ? "IDLE" : "P" + currentPid);
 
-// print labels
-for (String label : ganttLabels) {
-    System.out.print(" " + label + " |");
-}
-System.out.println();
+        // Print labels
+        for (String label : ganttLabels) {
+            System.out.print(" " + label + " |");
+        }
+        System.out.println();
 
-// print timestamps
-int t = 0;
-System.out.print("0");
-for (int cp : changePoints) {
-    System.out.printf("%" + (ganttLabels.get(changePoints.indexOf(cp)).length() + 3) + "d", cp);
-}
-System.out.println();
-
+        // Print timestamps
+        int t = 0;
+        System.out.print("0");
+        for (int cp : changePoints) {
+            System.out.printf("%" + (ganttLabels.get(changePoints.indexOf(cp)).length() + 3) + "d", cp);
+        }
+        System.out.println();
 
         // Display metrics
         System.out.println("\nProcess\tTAT\tWT\tRT");
