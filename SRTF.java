@@ -2,33 +2,45 @@ import java.util.*;
 
 public class SRTF {
     // ANSI color codes
-    public static final String YELLOW = "\u001B[33m";
-    public static final String GREEN = "\u001B[32m";
-    public static final String BLUE = "\u001B[34m";
-    public static final String CYAN = "\u001B[36m";
-    public static final String RED = "\u001B[31m";
-    public static final String RESET = "\u001B[0m";
+    private static final String RESET = "\u001B[0m";
+    private static final String RED = "\u001B[31m";
+    private static final String GREEN = "\u001B[32m";
+    private static final String YELLOW = "\u001B[33m";
+    private static final String BLUE = "\u001B[34m";
+    private static final String PURPLE = "\u001B[35m";
+    private static final String CYAN = "\u001B[36m";
+    private static final String BRIGHT_BLUE = "\u001B[94m";
+    private static final String BRIGHT_GREEN = "\u001B[92m";
+    private static final String BRIGHT_RED = "\u001B[91m";
 
-    // Inner class to represent a Process
+    // Inner Process class
     static class Process {
-        int pid;            // Process ID
-        int arrival;        // Arrival Time
-        int burst;          // Burst Time
-        int priority;       // Priority
-        int remaining;      // Remaining Time
-        int start;          // Start Time
-        int finish;         // Finish Time
-        boolean started;    // To check if process has started
+        int pid, arrivalTime, burstTime, remainingTime, priority;
+        int startTime = -1, completionTime, turnaroundTime, waitingTime, responseTime;
 
-        public Process(int pid, int arrival, int burst, int priority) {
+        Process(int pid, int arrivalTime, int burstTime, int priority) {
             this.pid = pid;
-            this.arrival = arrival;
-            this.burst = burst;
+            this.arrivalTime = arrivalTime;
+            this.burstTime = burstTime;
+            this.remainingTime = burstTime;
             this.priority = priority;
-            this.remaining = burst;
-            this.started = false;
-            this.start = -1;
-            this.finish = -1;
+        }
+    }
+
+    // Input validations
+    private static int getValidNumber(Scanner scanner, boolean allowZero) {
+        while (true) {
+            try {
+                int num = scanner.nextInt();
+                if (allowZero && num >= 0) return num;
+                if (!allowZero && num > 0) return num;
+
+                System.out.print(RED + "Invalid input. Please enter a " +
+                        (allowZero ? "non-negative" : "positive") + " number: " + RESET);
+            } catch (InputMismatchException e) {
+                System.out.print(RED + "Invalid input. Please enter a number: " + RESET);
+                scanner.next(); // Clear invalid input
+            }
         }
     }
 
@@ -46,15 +58,15 @@ public class SRTF {
             System.out.println("\n" + CYAN + "-- NEW PROCESS ENTRY --" + RESET);
 
             // Process ID
-            System.out.print("Enter " + BLUE + "Process ID" + RESET + " : ");
+            System.out.print("Enter " + BRIGHT_BLUE + "Process ID" + RESET + " : ");
             int pid = getValidNumber(scanner, true);
 
             // Arrival Time
-            System.out.print("Enter " + GREEN + "Arrival Time" + RESET + " : ");
+            System.out.print("Enter " + BRIGHT_GREEN + "Arrival Time" + RESET + " : ");
             int arrival = getValidNumber(scanner, true);
 
             // Burst Time
-            System.out.print("Enter " + RED + "Burst Time" + RESET + " : ");
+            System.out.print("Enter " + BRIGHT_RED + "Burst Time" + RESET + " : ");
             int burst = getValidNumber(scanner, true);
 
             // Priority
@@ -63,6 +75,7 @@ public class SRTF {
 
             // Check termination condition (all zeros)
             if (pid == 0 && arrival == 0 && burst == 0 && priority == 0) {
+                System.out.println(PURPLE + "Process input terminated." + RESET);
                 if (processes.isEmpty()) {
                     System.out.println(RED + "Warning: No processes entered!" + RESET);
                     continue;
@@ -70,7 +83,11 @@ public class SRTF {
                 break;
             }
 
-            // Validate burst and priority are positive
+            // Validate arrival, burst and priority are positive
+            if (arrival < 0) {
+                System.out.println(RED + "Error: Arrival time must be positive" + RESET);
+                continue;
+            }
             if (burst <= 0) {
                 System.out.println(RED + "Error: Burst time must be positive" + RESET);
                 continue;
@@ -86,133 +103,121 @@ public class SRTF {
         }
 
         // Sort processes by arrival time
-        processes.sort(Comparator.comparingInt(p -> p.arrival));
+        processes.sort(Comparator.comparingInt(p -> p.arrivalTime));
 
-        // Priority SRTF Scheduling
-        PriorityQueue<Process> queue = new PriorityQueue<>((p1, p2) -> {
-            if (p1.priority != p2.priority) {
-                return p1.priority - p2.priority; // Lower priority number = higher priority
-            } else {
-                return p1.remaining - p2.remaining; // If same priority, go to SRTF
-            }
-        });
-
-        List<String> ganttChart = new ArrayList<>();
-        int currentTime = 0;
+        int time = 0;
         int completed = 0;
-        int totalProcesses = processes.size();
-        Process currentProcess = null;
+        int n = processes.size();
+        List<Integer> ganttPids = new ArrayList<>();
+        List<Integer> ganttTimes = new ArrayList<>();
 
-        System.out.println("\n" + YELLOW + "GANTT CHART" + RESET);
-        System.out.println(YELLOW + "-----------" + RESET);
-        System.out.print(GREEN + "0 " + RESET);
+        // SRTF Scheduling
+        while (completed < n) {
+            Process current = null;
 
-        while (completed < totalProcesses) {
-            // Add arriving processes to the queue
+            // Select process with the shortest remaining time
             for (Process p : processes) {
-                if (p.arrival == currentTime) {
-                    queue.add(p);
+                if (p.arrivalTime <= time && p.remainingTime > 0) {
+                    if (current == null || p.remainingTime < current.remainingTime ||
+                            (p.remainingTime == current.remainingTime && p.priority < current.priority)) {
+                        current = p;
+                    }
                 }
             }
 
-            // If current process is finished
-            if (currentProcess != null && currentProcess.remaining == 0) {
-                currentProcess.finish = currentTime;
-                completed++;
-                currentProcess = null;
+            int pid = (current != null) ? current.pid : -1;
+
+            // Add to Gantt chart
+            if (ganttPids.isEmpty() || ganttPids.get(ganttPids.size() - 1) != pid) {
+                ganttPids.add(pid);
+                ganttTimes.add(time);
             }
 
-            // Get the highest priority process with SRT
-            Process nextProcess = queue.peek();
-            if (nextProcess != null) {
-                if (currentProcess == null ||
-                        (nextProcess.priority < currentProcess.priority) ||
-                        (nextProcess.priority == currentProcess.priority &&
-                                nextProcess.remaining < currentProcess.remaining)) {
-
-                    // Preempt current process if needed
-                    if (currentProcess != null) {
-                        queue.add(currentProcess);
-                    }
-
-                    currentProcess = queue.poll();
-
-                    // Record start time for response time calculation
-                    if (!currentProcess.started) {
-                        currentProcess.start = currentTime;
-                        currentProcess.started = true;
-                    }
-
-                    // Add to Gantt chart
-                    ganttChart.add(YELLOW + "|" + RESET + " " + GREEN + currentTime + " " + RESET +
-                            YELLOW + "|" + RESET + " " + BLUE + "P" + currentProcess.pid + " " + RESET);
+            if (current != null) {
+                if (current.startTime == -1) {
+                    current.startTime = time;
+                    current.responseTime = current.startTime - current.arrivalTime;
                 }
-            }
 
-            // Execute current process
-            if (currentProcess != null) {
-                currentProcess.remaining--;
+                current.remainingTime--;
+                time++;
+
+                if (current.remainingTime == 0) {
+                    current.completionTime = time;
+                    current.turnaroundTime = current.completionTime - current.arrivalTime;
+                    current.waitingTime = current.turnaroundTime - current.burstTime;
+                    completed++;
+                }
             } else {
-                ganttChart.add(YELLOW + "|" + RESET + " " + GREEN + currentTime + " " + RESET +
-                        YELLOW + "|" + RESET + " IDLE ");
-            }
-
-            currentTime++;
-        }
-
-        // Print Gantt chart
-        for (String entry : ganttChart) {
-            System.out.print(entry);
-        }
-        System.out.println(YELLOW + "|" + RESET + " " + GREEN + currentTime + RESET);
-        System.out.println(YELLOW + "-----------" + RESET);
-
-        // Calculate and print metrics with correct formulas
-        System.out.println("\n" + YELLOW + "PROCESS DETAILS" + RESET);
-        System.out.println(YELLOW + "---------------" + RESET);
-
-        float totalTAT = 0, totalWT = 0, totalRT = 0;
-
-        for (Process p : processes) {
-            int turnaround = p.finish - p.arrival;
-            int waiting = p.finish - p.burst - p.arrival;
-            int response = p.start - p.arrival;
-
-            totalTAT += turnaround;
-            totalWT += waiting;
-            totalRT += response;
-
-            System.out.println(BLUE + "P" + p.pid + " Details:" + RESET);
-            System.out.println("Turnaround Time = finish(" + p.finish + ") - arrival(" + p.arrival + ") = " + turnaround);
-            System.out.println("Waiting Time = finish(" + p.finish + ") - burst(" + p.burst + ") - arrival(" + p.arrival + ") = " + waiting);
-            System.out.println("Response Time = start(" + p.start + ") - arrival(" + p.arrival + ") = " + response);
-            System.out.println(YELLOW + "---------------" + RESET);
-        }
-
-        System.out.println("\n" + YELLOW + "AVERAGE METRICS" + RESET);
-        System.out.println(YELLOW + "--------------" + RESET);
-        System.out.printf("Average Turnaround Time = %.2f\n", totalTAT / totalProcesses);
-        System.out.printf("Average Response Time = %.2f\n", totalRT / totalProcesses);
-        System.out.printf("Average Waiting Time = %.2f\n", totalWT / totalProcesses);
-        System.out.println(YELLOW + "--------------" + RESET);
-
-        scanner.close();
-    }
-
-    // Validation for entered numbers from users
-    private static int getValidNumber(Scanner scanner, boolean allowZero) {
-        while (true) {
-            try {
-                int num = scanner.nextInt();
-                if (allowZero && num >= 0) return num;
-                if (!allowZero && num > 0) return num;
-
-                System.out.print(RED + "Invalid input. Please enter a " +
-                        (allowZero ? "non-negative" : "positive") + " number: " + RESET);
-            } catch (InputMismatchException e) {
-                System.out.print(RED + "Invalid input. Please enter a number: " + RESET);
-                scanner.next(); // Clear invalid input
+                time++;
             }
         }
+
+        // Add the final time to the Gantt chart
+        ganttTimes.add(time);
+
+        // Display Gantt Chart
+        System.out.println("\n" + PURPLE + "GANTT CHART" + RESET);
+        System.out.println(PURPLE + "===========" + RESET);
+
+        // Print top border
+        System.out.print(BLUE + "+");
+        for (int i = 0; i < ganttPids.size(); i++) {
+            System.out.print("---+");
+        }
+        System.out.println(RESET);
+
+        // Print process labels with fixed width
+        System.out.print(BLUE + "|" + RESET);
+        String[] colors = {GREEN, CYAN, YELLOW, BRIGHT_GREEN, BRIGHT_BLUE, PURPLE};
+        for (int i = 0; i < ganttPids.size(); i++) {
+            int pid = ganttPids.get(i);
+            String color = (pid == -1) ? RED : colors[pid % colors.length];
+            String label = (pid == -1) ? "IDL" : String.format("P%-2d", pid); // 3-char width
+            System.out.print(color + label + RESET + BLUE + "|" + RESET);
+        }
+        System.out.println();
+
+        // Print bottom border
+        System.out.print(BLUE + "+");
+        for (int i = 0; i < ganttPids.size(); i++) {
+            System.out.print("---+");
+        }
+        System.out.println(RESET);
+
+        // Print time markers
+        for (int i = 0; i < ganttTimes.size(); i++) {
+            System.out.printf("%-4d", ganttTimes.get(i)); // width 4 per column
+        }
+        System.out.println();
+
+        // Display detailed process metrics
+        System.out.println("\n" + CYAN + "PROCESS DETAILS" + RESET);
+        System.out.println(CYAN + "===============" + RESET);
+
+        double totalTAT = 0, totalWT = 0, totalRT = 0;
+        String[] detailColors = {GREEN, CYAN, YELLOW, BRIGHT_GREEN, BRIGHT_BLUE};
+
+        for (int i = 0; i < processes.size(); i++) {
+            Process p = processes.get(i);
+            String color = detailColors[i % detailColors.length];
+
+            System.out.println(color + "P" + p.pid + " Details:" + RESET);
+            System.out.println("Turnaround Time = " + p.completionTime + " - " + p.arrivalTime + " = " + color + p.turnaroundTime + RESET);
+            System.out.println("Waiting Time = " + p.completionTime + " - " + p.arrivalTime + " - " + p.burstTime + " = " + color + p.waitingTime + RESET);
+            System.out.println("Response Time = " + p.startTime + " - " + p.arrivalTime + " = " + color + p.responseTime + RESET);
+            System.out.println(BLUE + "-------------------" + RESET);
+
+            totalTAT += p.turnaroundTime;
+            totalWT += p.waitingTime;
+            totalRT += p.responseTime;
+        }
+
+        // Display average
+        System.out.println("\n" + PURPLE + "PROCESSES AVERAGE MATRICES" + RESET);
+        System.out.println(PURPLE + "==========================" + RESET);
+        System.out.println("Average Turnaround Time = " + totalTAT + " / " + n + " = " + YELLOW + (totalTAT / n) + RESET);
+        System.out.println("Average Waiting Time = " + totalWT + " / " + n + " = " + YELLOW + (totalWT / n) + RESET);
+        System.out.println("Average Response Time = " + totalRT + " / " + n + " = " + YELLOW + (totalRT / n) + RESET);
     }
 }
